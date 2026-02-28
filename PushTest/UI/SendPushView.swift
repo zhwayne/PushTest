@@ -8,14 +8,21 @@ struct SendPushView: View {
 
     @State private var isImportingP8 = false
 
+    private let wideLayoutThreshold: CGFloat = 1000
+    private let sidebarWidth: CGFloat = 390
+    private let resultMaxHeight: CGFloat = 240
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                credentialsSection
-                targetSection
-                payloadSection
-                resultSection
+        GeometryReader { proxy in
+            Group {
+                switch layoutMode(for: proxy.size.width) {
+                case .wide:
+                    wideLayout
+                case .compact:
+                    compactLayout
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(20)
         }
         .fileImporter(
@@ -25,9 +32,52 @@ struct SendPushView: View {
         ) { result in
             handleP8Import(result: result)
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                applyTemplateToolbarButton
+                validateToolbarButton
+                sendPushToolbarButton
+            }
+        }
     }
 
-    private var credentialsSection: some View {
+    private var wideLayout: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 16) {
+                credentialsPanel
+                targetPanel
+                Spacer(minLength: 0)
+            }
+            .frame(width: sidebarWidth, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: 16) {
+                payloadPanel(isWide: true)
+                    .layoutPriority(1)
+                if shouldShowResultPanel {
+                    resultPanel(maxHeight: resultMaxHeight)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var compactLayout: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                credentialsPanel
+                targetPanel
+                payloadPanel(isWide: false)
+                if shouldShowResultPanel {
+                    resultPanel(maxHeight: resultMaxHeight)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var credentialsPanel: some View {
         GroupBox("Credentials") {
             VStack(alignment: .leading, spacing: 12) {
                 TextField("Team ID", text: $state.teamID)
@@ -63,7 +113,7 @@ struct SendPushView: View {
         }
     }
 
-    private var targetSection: some View {
+    private var targetPanel: some View {
         GroupBox("Target") {
             VStack(alignment: .leading, spacing: 12) {
                 Picker("APNs Environment", selection: $state.environment) {
@@ -83,15 +133,18 @@ struct SendPushView: View {
                 TextField("Push Token (start/update/end)", text: $state.deviceToken)
                     .textFieldStyle(.roundedBorder)
 
-                HStack(alignment: .top, spacing: 12) {
+                HStack(spacing: 12) {
                     Picker("Priority", selection: $state.priority) {
                         Text("10 (Immediate)").tag(10)
                         Text("5 (Power Saving)").tag(5)
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
 
                     TextField("Collapse ID (optional)", text: $state.collapseID)
                         .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 210)
                 }
 
                 TextField("Topic Override (optional)", text: $state.topicOverride)
@@ -105,45 +158,10 @@ struct SendPushView: View {
         }
     }
 
-    private var payloadSection: some View {
+    private func payloadPanel(isWide: Bool) -> some View {
         GroupBox("Payload") {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    Button("Apply \(state.event.displayName) Template") {
-                        state.applyTemplateForCurrentEvent()
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button("Validate") {
-                        _ = state.validatePayload()
-                    }
-                    .buttonStyle(.bordered)
-
-                    Spacer()
-
-                    Button {
-                        Task {
-                            await state.sendPush(modelContext: modelContext)
-                        }
-                    } label: {
-                        if state.isSending {
-                            Label("Sending...", systemImage: "hourglass")
-                        } else {
-                            Label("Send Push", systemImage: "paperplane")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!state.canSend)
-                }
-
-                TextEditor(text: $state.payloadJSON)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(minHeight: 260)
-                    .padding(4)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(state.validationErrors.isEmpty ? Color.gray.opacity(0.2) : .red, lineWidth: 1)
-                    }
+                payloadEditor(isWide: isWide)
 
                 if !state.validationErrors.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
@@ -160,68 +178,137 @@ struct SendPushView: View {
                     .foregroundStyle(.orange)
             }
             .padding(.top, 4)
+            .frame(maxHeight: isWide ? .infinity : nil, alignment: .topLeading)
         }
+        .frame(maxHeight: isWide ? .infinity : nil, alignment: .topLeading)
     }
 
     @ViewBuilder
-    private var resultSection: some View {
-        GroupBox("Result") {
-            VStack(alignment: .leading, spacing: 8) {
-                if let message = state.infoMessage {
-                    Text(message)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let errorMessage = state.sendErrorMessage {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                }
-
-                if let result = state.result {
-                    LabeledContent("Status") {
-                        Text("\(result.statusCode)")
-                            .foregroundStyle(result.isSuccess ? .green : .red)
-                    }
-
-                    if let topic = state.requestTopic {
-                        LabeledContent("Topic") {
-                            Text(topic)
-                                .font(.system(.body, design: .monospaced))
-                        }
-                    }
-
-                    if let apnsID = result.apnsID {
-                        LabeledContent("apns-id") {
-                            Text(apnsID)
-                                .font(.system(.body, design: .monospaced))
-                        }
-                    }
-
-                    if let reason = result.reason,
-                       !reason.isEmpty {
-                        LabeledContent("Reason") {
-                            Text(reason)
-                        }
-                    }
-
-                    if let body = result.responseBody,
-                       !body.isEmpty {
-                        LabeledContent("Body") {
-                            Text(body)
-                                .font(.system(.body, design: .monospaced))
-                        }
-                    }
-
-                    LabeledContent("Latency") {
-                        Text("\(result.latencyMs) ms")
-                    }
-                } else {
-                    Text("No request sent yet.")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.top, 4)
+    private func payloadEditor(isWide: Bool) -> some View {
+        if isWide {
+            payloadEditorBase
+                .frame(minHeight: 200, maxHeight: .infinity)
+        } else {
+            payloadEditorBase
+                .frame(minHeight: 220)
         }
+    }
+
+    private var payloadEditorBase: some View {
+        TextEditor(text: $state.payloadJSON)
+            .font(.system(.body, design: .monospaced))
+            .padding(4)
+            .overlay {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(state.validationErrors.isEmpty ? Color.gray.opacity(0.2) : .red, lineWidth: 1)
+            }
+    }
+
+    private func resultPanel(maxHeight: CGFloat) -> some View {
+        GroupBox("Result") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let message = state.infoMessage {
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let errorMessage = state.sendErrorMessage {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+
+                    if let result = state.result {
+                        LabeledContent("Status") {
+                            Text("\(result.statusCode)")
+                                .foregroundStyle(result.isSuccess ? .green : .red)
+                        }
+
+                        if let topic = state.requestTopic {
+                            LabeledContent("Topic") {
+                                Text(topic)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+                        }
+
+                        if let apnsID = result.apnsID {
+                            LabeledContent("apns-id") {
+                                Text(apnsID)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+                        }
+
+                        if let reason = result.reason,
+                           !reason.isEmpty {
+                            LabeledContent("Reason") {
+                                Text(reason)
+                            }
+                        }
+
+                        if let body = result.responseBody,
+                           !body.isEmpty {
+                            LabeledContent("Body") {
+                                Text(body)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+                        }
+
+                        LabeledContent("Latency") {
+                            Text("\(result.latencyMs) ms")
+                        }
+                    } else {
+                        Text("No request sent yet.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxHeight: maxHeight)
+        }
+    }
+
+    private var applyTemplateToolbarButton: some View {
+        Button {
+            state.applyTemplateForCurrentEvent()
+        } label: {
+            Label("Apply Template", systemImage: "doc.badge.gearshape")
+        }
+    }
+
+    private var validateToolbarButton: some View {
+        Button {
+            _ = state.validatePayload()
+        } label: {
+            Label("Validate", systemImage: "checkmark.seal")
+        }
+    }
+
+    private var sendPushToolbarButton: some View {
+        Button {
+            Task {
+                await state.sendPush(modelContext: modelContext)
+            }
+        } label: {
+            if state.isSending {
+                Label("Sending...", systemImage: "hourglass")
+            } else {
+                Label("Send Push", systemImage: "paperplane")
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!state.canSend)
+    }
+
+    private var shouldShowResultPanel: Bool {
+        state.result != nil ||
+        state.sendErrorMessage != nil ||
+        state.infoMessage != nil
+    }
+
+    private func layoutMode(for width: CGFloat) -> LayoutMode {
+        width >= wideLayoutThreshold ? .wide : .compact
     }
 
     private func handleP8Import(result: Result<[URL], Error>) {
@@ -256,4 +343,9 @@ struct SendPushView: View {
             state.sendErrorMessage = "Import failed: \(error.localizedDescription)"
         }
     }
+}
+
+private enum LayoutMode {
+    case wide
+    case compact
 }
