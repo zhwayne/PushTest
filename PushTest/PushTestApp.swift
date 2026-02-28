@@ -21,5 +21,6 @@ struct PushTestApp: App {
             ContentView(state: state)
         }
         .modelContainer(modelContainer)
+        .defaultSize(width: 900, height: 700)
     }
 }

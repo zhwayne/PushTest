@@ -12,6 +12,7 @@ struct ContentView: View {
                 }
             }
             .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 200, max: 200)
             .navigationTitle("PushTest")
         } detail: {
             switch state.selectedTab {
@@ -21,7 +22,7 @@ struct ContentView: View {
                 HistoryView(state: state)
             }
         }
-        .frame(minWidth: 980, minHeight: 700)
+        .frame(minWidth: 780, minHeight: 700)
     }
 
     private var selectedTabSelection: Binding<AppTab?> {

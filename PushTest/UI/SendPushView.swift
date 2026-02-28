@@ -9,8 +9,10 @@ struct SendPushView: View {
     @State private var isImportingP8 = false
     @State private var payloadFormatMessage: String?
 
-    private let wideLayoutThreshold: CGFloat = 1000
-    private let sidebarWidth: CGFloat = 420
+    private let wideLayoutThreshold: CGFloat = 960
+    private let sidebarWidth: CGFloat = 540
+    private let compactPayloadMinHeight: CGFloat = 450
+    private let resultMinHeight: CGFloat = 170
     private let resultMaxHeight: CGFloat = 240
 
     var body: some View {
@@ -37,6 +39,7 @@ struct SendPushView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 applyTemplateToolbarButton
                 validateToolbarButton
+                useCurrentTimestampToolbarButton
                 formatJSONToolbarButton
                 sendPushToolbarButton
             }
@@ -54,7 +57,6 @@ struct SendPushView: View {
 
             VStack(alignment: .leading, spacing: 16) {
                 payloadPanel(isWide: true)
-                    .layoutPriority(1)
                 if shouldShowResultPanel {
                     resultPanel(maxHeight: resultMaxHeight)
                 }
@@ -199,7 +201,7 @@ struct SendPushView: View {
                 .frame(minHeight: 200, maxHeight: .infinity)
         } else {
             payloadEditorBase
-                .frame(minHeight: 220)
+                .frame(minHeight: compactPayloadMinHeight)
         }
     }
 
@@ -282,7 +284,7 @@ struct SendPushView: View {
                 .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(maxHeight: maxHeight)
+            .frame(minHeight: resultMinHeight, maxHeight: maxHeight)
         }
     }
 
@@ -314,6 +316,15 @@ struct SendPushView: View {
         .help("Format JSON")
     }
 
+    private var useCurrentTimestampToolbarButton: some View {
+        Button {
+            applyCurrentTimestamp()
+        } label: {
+            Label("Use Current Timestamp", systemImage: "clock.arrow.circlepath")
+        }
+        .help("Use Current Timestamp")
+    }
+
     private var sendPushToolbarButton: some View {
         Button {
             Task {
@@ -328,6 +339,7 @@ struct SendPushView: View {
         }
         .help(state.isSending ? "Sending..." : "Send Push")
         .buttonStyle(.borderedProminent)
+        .tint(state.canSend ? .accentColor : .gray)
         .disabled(!state.canSend)
     }
 
@@ -352,6 +364,61 @@ struct SendPushView: View {
                 payloadFormatMessage = "Auto-format skipped: \(error.localizedDescription)"
             }
         }
+    }
+
+    private func applyCurrentTimestamp() {
+        do {
+            let updatedPayload = try payloadByUpdatingTimestamp(state.payloadJSON)
+            if updatedPayload != state.payloadJSON {
+                state.payloadJSON = updatedPayload
+            }
+            payloadFormatMessage = nil
+        } catch {
+            payloadFormatMessage = "Timestamp update failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func payloadByUpdatingTimestamp(_ text: String) throws -> String {
+        guard let inputData = text.data(using: .utf8) else {
+            throw TimestampUpdateError.invalidUTF8
+        }
+
+        let jsonObject: Any
+        do {
+            jsonObject = try JSONSerialization.jsonObject(with: inputData, options: [])
+        } catch {
+            throw TimestampUpdateError.invalidJSON
+        }
+
+        guard var rootObject = jsonObject as? [String: Any] else {
+            throw TimestampUpdateError.invalidRootObject
+        }
+
+        var apsObject: [String: Any]
+        if let existingAPS = rootObject["aps"] {
+            guard let existingAPSObject = existingAPS as? [String: Any] else {
+                throw TimestampUpdateError.invalidAPSObject
+            }
+            apsObject = existingAPSObject
+        } else {
+            apsObject = [:]
+        }
+
+        apsObject["timestamp"] = Int(Date().timeIntervalSince1970)
+        rootObject["aps"] = apsObject
+
+        let updatedData: Data
+        do {
+            updatedData = try JSONSerialization.data(withJSONObject: rootObject, options: [])
+        } catch {
+            throw TimestampUpdateError.unableToEncode
+        }
+
+        guard let updatedText = String(data: updatedData, encoding: .utf8) else {
+            throw TimestampUpdateError.unableToEncode
+        }
+
+        return try JSONPayloadFormatter.format(updatedText)
     }
 
     private func layoutMode(for width: CGFloat) -> LayoutMode {
@@ -400,4 +467,27 @@ private enum LayoutMode {
 private enum FormatTrigger {
     case manual
     case automatic
+}
+
+private enum TimestampUpdateError: LocalizedError {
+    case invalidUTF8
+    case invalidJSON
+    case invalidRootObject
+    case invalidAPSObject
+    case unableToEncode
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidUTF8:
+            "Payload is not valid UTF-8."
+        case .invalidJSON:
+            "Payload is not valid JSON."
+        case .invalidRootObject:
+            "Payload root must be a JSON object."
+        case .invalidAPSObject:
+            "aps must be a JSON object."
+        case .unableToEncode:
+            "Unable to encode JSON payload."
+        }
+    }
 }

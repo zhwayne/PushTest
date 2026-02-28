@@ -87,8 +87,7 @@ final class PushToolState {
         teamID = ""
         keyID = ""
         bundleID = ""
-        p8PEM = ""
-        importedP8Filename = nil
+        clearImportedP8State()
     }
 
     func importP8(text: String, fileName: String) {
@@ -119,14 +118,30 @@ final class PushToolState {
 
     func loadFromHistory(_ record: PushHistoryRecord) {
         selectedTab = .send
+
+        if let teamID = record.credentialTeamID?.nilIfEmpty,
+           let keyID = record.credentialKeyID?.nilIfEmpty,
+           let bundleID = record.credentialBundleID?.nilIfEmpty {
+            self.teamID = teamID
+            self.keyID = keyID
+            self.bundleID = bundleID
+        } else {
+            clearCredentials()
+        }
+        clearImportedP8State()
+
         environment = record.environment
         event = record.event
         deviceToken = record.deviceToken
         priority = record.priority
         collapseID = record.collapseID ?? ""
-        topicOverride = record.topic
+        topicOverride = record.topicOverrideInput ?? ""
         payloadJSON = record.payloadJSON
-        infoMessage = "Loaded history request from \(record.createdAt.formatted(date: .abbreviated, time: .standard))."
+        validationErrors = []
+        result = nil
+        requestTopic = nil
+        sendErrorMessage = nil
+        infoMessage = nil
     }
 
     func sendPush(modelContext: ModelContext) async {
@@ -172,7 +187,10 @@ final class PushToolState {
                 draft: draft,
                 environment: environment,
                 topic: topic,
-                result: sendResult
+                result: sendResult,
+                credentialTeamID: credentials.teamID,
+                credentialKeyID: credentials.keyID,
+                credentialBundleID: credentials.bundleID
             )
 
             infoMessage = sendResult.isSuccess ? "Push sent successfully." : "Push sent but APNs returned an error."
@@ -181,10 +199,20 @@ final class PushToolState {
         }
     }
 
+    private func clearImportedP8State() {
+        p8PEM = ""
+        importedP8Filename = nil
+    }
+
 }
 
 private extension String {
     var trimmed: String {
         trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var nilIfEmpty: String? {
+        let value = trimmed
+        return value.isEmpty ? nil : value
     }
 }

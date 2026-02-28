@@ -12,6 +12,11 @@ struct PushHistoryStore {
         environment: APNsEnvironment,
         topic: String,
         result: APNsSendResult,
+        credentialTeamID: String? = nil,
+        credentialKeyID: String? = nil,
+        credentialBundleID: String? = nil,
+        p8FilePath: String? = nil,
+        p8BookmarkData: Data? = nil,
         createdAt: Date = .now
     ) throws {
         let record = PushHistoryRecord(
@@ -21,6 +26,12 @@ struct PushHistoryStore {
             deviceToken: draft.sanitizedDeviceToken,
             tokenMasked: TokenMasking.masked(draft.sanitizedDeviceToken),
             topic: topic,
+            topicOverrideInput: draft.normalizedTopicOverride,
+            credentialTeamID: credentialTeamID,
+            credentialKeyID: credentialKeyID,
+            credentialBundleID: credentialBundleID,
+            p8FilePath: p8FilePath,
+            p8BookmarkData: p8BookmarkData,
             payloadJSON: draft.payloadJSON,
             priority: draft.priority,
             collapseID: draft.normalizedCollapseID,
