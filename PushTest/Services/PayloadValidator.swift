@@ -1,7 +1,7 @@
 import Foundation
 
 enum PayloadValidator {
-    static func validate(payloadJSON: String, event: LiveActivityEvent) -> [String] {
+    static func validate(payloadJSON: String, event: LiveActivityEvent, pushType: APNsPushType) -> [String] {
         var errors: [String] = []
 
         guard let data = payloadJSON.data(using: .utf8) else {
@@ -12,8 +12,12 @@ enum PayloadValidator {
             return ["Payload is not valid JSON."]
         }
 
+        guard pushType.isLiveActivity else {
+            return errors
+        }
+
         guard let aps = root["aps"] as? [String: Any] else {
-            return ["Missing aps object."]
+            return ["Missing aps object for liveactivity push type."]
         }
 
         if !(aps["timestamp"] is NSNumber) {

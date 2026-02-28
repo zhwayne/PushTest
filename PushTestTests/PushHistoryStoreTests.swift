@@ -12,6 +12,7 @@ final class PushHistoryStoreTests: XCTestCase {
         for index in 0..<1_005 {
             let draft = PushRequestDraft(
                 event: .update,
+                pushType: .liveactivity,
                 deviceToken: "token-\(index)",
                 priority: 10,
                 collapseID: nil,
@@ -46,6 +47,7 @@ final class PushHistoryStoreTests: XCTestCase {
 
         let draft = PushRequestDraft(
             event: .update,
+            pushType: .liveactivity,
             deviceToken: "token-present",
             priority: 10,
             collapseID: nil,
@@ -75,6 +77,7 @@ final class PushHistoryStoreTests: XCTestCase {
 
         let draft = PushRequestDraft(
             event: .update,
+            pushType: .background,
             deviceToken: "token-creds",
             priority: 10,
             collapseID: nil,
@@ -100,6 +103,8 @@ final class PushHistoryStoreTests: XCTestCase {
         XCTAssertEqual(record.credentialTeamID, "TEAM12345")
         XCTAssertEqual(record.credentialKeyID, "KEY12345")
         XCTAssertEqual(record.credentialBundleID, "com.example.app")
+        XCTAssertEqual(record.pushTypeRaw, "background")
+        XCTAssertEqual(record.pushType, .background)
     }
 
     func testStorePersistsNilTopicOverrideInputWhenAbsent() throws {
@@ -109,6 +114,7 @@ final class PushHistoryStoreTests: XCTestCase {
 
         let draft = PushRequestDraft(
             event: .update,
+            pushType: .liveactivity,
             deviceToken: "token-missing",
             priority: 10,
             collapseID: nil,
@@ -138,6 +144,7 @@ final class PushHistoryStoreTests: XCTestCase {
 
         let draft = PushRequestDraft(
             event: .update,
+            pushType: .liveactivity,
             deviceToken: "token-legacy",
             priority: 10,
             collapseID: nil,
@@ -162,6 +169,54 @@ final class PushHistoryStoreTests: XCTestCase {
         XCTAssertNil(record.credentialBundleID)
         XCTAssertNil(record.p8FilePath)
         XCTAssertNil(record.p8BookmarkData)
+        XCTAssertEqual(record.pushType, .liveactivity)
+    }
+
+    func testPushTypeFallsBackToAlertWhenRawValueMissing() {
+        let record = PushHistoryRecord(
+            createdAt: .now,
+            event: .start,
+            environment: .sandbox,
+            deviceToken: "token",
+            tokenMasked: "***oken",
+            topic: "com.example.push-type.liveactivity",
+            pushTypeRaw: nil,
+            topicOverrideInput: nil,
+            payloadJSON: "{}",
+            priority: 10,
+            collapseID: nil,
+            statusCode: 200,
+            apnsID: nil,
+            reason: nil,
+            responseBody: nil,
+            latencyMs: 1
+        )
+
+        XCTAssertEqual(record.pushType, .alert)
+    }
+
+    func testUnsupportedPushTypeRawExposesLegacyValue() {
+        let record = PushHistoryRecord(
+            createdAt: .now,
+            event: .start,
+            environment: .sandbox,
+            deviceToken: "token",
+            tokenMasked: "***oken",
+            topic: "com.example.push-type.liveactivity",
+            pushTypeRaw: "voip",
+            topicOverrideInput: nil,
+            payloadJSON: "{}",
+            priority: 10,
+            collapseID: nil,
+            statusCode: 200,
+            apnsID: nil,
+            reason: nil,
+            responseBody: nil,
+            latencyMs: 1
+        )
+
+        XCTAssertEqual(record.pushType, .alert)
+        XCTAssertEqual(record.unsupportedPushTypeRaw, "voip")
     }
 
     private func makeContainer() throws -> ModelContainer {

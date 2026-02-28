@@ -26,6 +26,7 @@ struct PushHistoryStore {
             deviceToken: draft.sanitizedDeviceToken,
             tokenMasked: TokenMasking.masked(draft.sanitizedDeviceToken),
             topic: topic,
+            pushTypeRaw: draft.pushType.rawValue,
             topicOverrideInput: draft.normalizedTopicOverride,
             credentialTeamID: credentialTeamID,
             credentialKeyID: credentialKeyID,

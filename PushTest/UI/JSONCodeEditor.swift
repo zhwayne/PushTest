@@ -15,8 +15,16 @@ struct JSONCodeEditor: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
+        scrollView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        scrollView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        scrollView.wantsLayer = true
+        scrollView.layer?.masksToBounds = true
+        scrollView.contentView.copiesOnScroll = false
+        scrollView.contentView.drawsBackground = false
 
         let textView = NSTextView()
         textView.delegate = context.coordinator
@@ -34,12 +42,18 @@ struct JSONCodeEditor: NSViewRepresentable {
         )
         textView.textContainerInset = NSSize(width: 4, height: 6)
         textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.lineBreakMode = .byCharWrapping
+        textView.textContainer?.lineFragmentPadding = 2
         textView.textContainer?.containerSize = NSSize(
             width: 0,
             height: CGFloat.greatestFiniteMagnitude
         )
         textView.font = Coordinator.editorFont
         textView.textColor = .labelColor
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textView.wantsLayer = true
+        textView.layer?.masksToBounds = true
 
         textView.isContinuousSpellCheckingEnabled = false
         textView.isGrammarCheckingEnabled = false

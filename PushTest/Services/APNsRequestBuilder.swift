@@ -22,7 +22,7 @@ struct APNsRequestBuilder {
             throw APNSError.invalidPayload
         }
 
-        let topic = draft.normalizedTopicOverride ?? "\(credentials.bundleID).push-type.liveactivity"
+        let topic = draft.normalizedTopicOverride ?? draft.pushType.defaultTopic(for: credentials.bundleID)
 
         let endpoint = environment.baseURL.appending(path: "/3/device/\(token)")
         var request = URLRequest(url: endpoint)
@@ -31,7 +31,7 @@ struct APNsRequestBuilder {
         request.timeoutInterval = 30
 
         request.setValue("bearer \(jwt)", forHTTPHeaderField: "authorization")
-        request.setValue("liveactivity", forHTTPHeaderField: "apns-push-type")
+        request.setValue(draft.pushType.rawValue, forHTTPHeaderField: "apns-push-type")
         request.setValue(topic, forHTTPHeaderField: "apns-topic")
         request.setValue("\(draft.priority)", forHTTPHeaderField: "apns-priority")
 

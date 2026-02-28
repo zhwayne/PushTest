@@ -7,12 +7,19 @@ struct SendPushView: View {
     @Bindable var state: PushToolState
 
     @State private var isImportingP8 = false
+    @State private var activeAlert: PresentedAlert?
+    @State private var pendingTemplateAction: PendingTemplateAction?
     @State private var payloadFormatMessage: String?
 
-    private let wideLayoutThreshold: CGFloat = 960
-    private let sidebarWidth: CGFloat = 540
-    private let compactPayloadMinHeight: CGFloat = 450
-    private let resultMinHeight: CGFloat = 170
+    private let horizontalPadding: CGFloat = 20
+    private let splitDividerWidthAllowance: CGFloat = 2
+    private let splitContentInset: CGFloat = 10
+    private let wideLayoutThreshold: CGFloat = 900
+    private let wideLeftColumnMinWidth: CGFloat = 460
+    private let wideLeftColumnIdealWidth: CGFloat = 540
+    private let wideRightColumnMinWidth: CGFloat = 420
+    private let compactPayloadMinHeight: CGFloat = 360
+    private let resultMinHeight: CGFloat = 200
     private let resultMaxHeight: CGFloat = 240
 
     var body: some View {
@@ -26,7 +33,7 @@ struct SendPushView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(20)
+            .padding(horizontalPadding)
         }
         .fileImporter(
             isPresented: $isImportingP8,
@@ -35,46 +42,51 @@ struct SendPushView: View {
         ) { result in
             handleP8Import(result: result)
         }
+        .alert(item: $activeAlert, content: alertContent)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 applyTemplateToolbarButton
-                validateToolbarButton
-                useCurrentTimestampToolbarButton
                 formatJSONToolbarButton
+                useCurrentTimestampToolbarButton
+                clearFormToolbarButton
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                validateToolbarButton
                 sendPushToolbarButton
             }
         }
     }
 
     private var wideLayout: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 16) {
-                credentialsPanel
-                targetPanel
-                Spacer(minLength: 0)
-            }
-            .frame(width: sidebarWidth, alignment: .topLeading)
-
-            VStack(alignment: .leading, spacing: 16) {
-                payloadPanel(isWide: true)
-                if shouldShowResultPanel {
+        HSplitView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    credentialsPanel
+                    targetPanel
                     resultPanel(maxHeight: resultMaxHeight)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, splitContentInset)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(minWidth: wideLeftColumnMinWidth, idealWidth: wideLeftColumnIdealWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .clipped()
+
+            payloadPanel(isWide: true)
+                .padding(.leading, splitContentInset)
+                .frame(minWidth: wideRightColumnMinWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var compactLayout: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 18) {
                 credentialsPanel
                 targetPanel
                 payloadPanel(isWide: false)
-                if shouldShowResultPanel {
-                    resultPanel(maxHeight: resultMaxHeight)
-                }
+                resultPanel(maxHeight: resultMaxHeight)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -83,12 +95,28 @@ struct SendPushView: View {
 
     private var credentialsPanel: some View {
         GroupBox("Credentials") {
-            VStack(alignment: .leading, spacing: 12) {
-                TextField("Team ID", text: $state.teamID)
-                TextField("Key ID", text: $state.keyID)
-                TextField("Bundle ID", text: $state.bundleID)
+            VStack(alignment: .leading, spacing: 14) {
+                Grid(horizontalSpacing: 12, verticalSpacing: 10) {
+                    GridRow {
+                        fieldGroup(title: "Team ID") {
+                            TextField("Team ID", text: $state.teamID)
+                        }
 
-                HStack(spacing: 12) {
+                        fieldGroup(title: "Key ID") {
+                            TextField("Key ID", text: $state.keyID)
+                        }
+                    }
+
+                    GridRow {
+                        fieldGroup(title: "Bundle ID") {
+                            TextField("Bundle ID", text: $state.bundleID)
+                        }
+                            .gridCellColumns(2)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+
+                HStack(spacing: 10) {
                     Button("Import P8") {
                         isImportingP8 = true
                     }
@@ -99,9 +127,12 @@ struct SendPushView: View {
                     }
                     .buttonStyle(.bordered)
 
+                    Spacer(minLength: 0)
+
                     if let filename = state.importedP8Filename {
                         Text(filename)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     } else {
                         Text("No P8 loaded")
                             .foregroundStyle(.secondary)
@@ -112,50 +143,89 @@ struct SendPushView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
-            .textFieldStyle(.roundedBorder)
             .padding(.top, 4)
         }
     }
 
     private var targetPanel: some View {
         GroupBox("Target") {
-            VStack(alignment: .leading, spacing: 12) {
-                Picker("APNs Environment", selection: $state.environment) {
-                    ForEach(APNsEnvironment.allCases) { environment in
-                        Text(environment.displayName).tag(environment)
+            VStack(alignment: .leading, spacing: 14) {
+                Grid(horizontalSpacing: 12, verticalSpacing: 10) {
+                    GridRow {
+                        fieldGroup(title: "Environment") {
+                            Picker("", selection: $state.environment) {
+                                ForEach(APNsEnvironment.allCases) { environment in
+                                    Text(environment.displayName).tag(environment)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .accessibilityLabel("APNs Environment")
+                        }
+                        fieldGroup(title: "Push Type") {
+                            Picker("", selection: pushTypeSelection) {
+                                ForEach(APNsPushType.allCases) { pushType in
+                                    Text(pushType.displayName).tag(pushType)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .accessibilityLabel("APNs Push Type")
+                        }
+                    }
+
+                    if state.isLiveActivityMode {
+                        GridRow {
+                            fieldGroup(title: "Event") {
+                                Picker("", selection: eventSelection) {
+                                    ForEach(LiveActivityEvent.allCases) { event in
+                                        Text(event.displayName).tag(event)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .accessibilityLabel("Event")
+                            }
+                            .gridCellColumns(2)
+                        }
+                    }
+
+                    GridRow {
+                        fieldGroup(title: "Push Token") {
+                            TextField("Push Token", text: $state.deviceToken)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        .gridCellColumns(2)
+                    }
+
+                    GridRow {
+                        fieldGroup(title: "Priority") {
+                            Picker("", selection: $state.priority) {
+                                Text("10 (Immediate)").tag(10)
+                                Text("5 (Power Saving)").tag(5)
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .accessibilityLabel("Priority")
+                            .frame(minWidth: 180, alignment: .leading)
+                        }
+
+                        fieldGroup(title: "Collapse ID") {
+                            TextField("Collapse ID (optional)", text: $state.collapseID)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+
+                    GridRow {
+                        fieldGroup(title: "Topic Override") {
+                            TextField("Topic Override (optional)", text: $state.topicOverride)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        .gridCellColumns(2)
                     }
                 }
-                .pickerStyle(.segmented)
 
-                Picker("Event", selection: $state.event) {
-                    ForEach(LiveActivityEvent.allCases) { event in
-                        Text(event.displayName).tag(event)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                TextField("Push Token (start/update/end)", text: $state.deviceToken)
-                    .textFieldStyle(.roundedBorder)
-
-                HStack(spacing: 12) {
-                    Picker("Priority", selection: $state.priority) {
-                        Text("10 (Immediate)").tag(10)
-                        Text("5 (Power Saving)").tag(5)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    
-                    Spacer(minLength: 0)
-
-                    TextField("Collapse ID (optional)", text: $state.collapseID)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 210)
-                }
-
-                TextField("Topic Override (optional)", text: $state.topicOverride)
-                    .textFieldStyle(.roundedBorder)
-
-                Text("Default topic: <BundleID>.push-type.liveactivity")
+                Text("Default topic: \(state.defaultTopicDescription)")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -163,9 +233,20 @@ struct SendPushView: View {
         }
     }
 
+    @ViewBuilder
+    private func fieldGroup<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func payloadPanel(isWide: Bool) -> some View {
         GroupBox("Payload") {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 payloadEditor(isWide: isWide)
 
                 if !state.validationErrors.isEmpty {
@@ -191,7 +272,9 @@ struct SendPushView: View {
             .padding(.top, 4)
             .frame(maxHeight: isWide ? .infinity : nil, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(maxHeight: isWide ? .infinity : nil, alignment: .topLeading)
+        .clipped()
     }
 
     @ViewBuilder
@@ -221,6 +304,7 @@ struct SendPushView: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(state.validationErrors.isEmpty ? Color.gray.opacity(0.2) : .red, lineWidth: 1)
         }
+        .clipped()
     }
 
     private func resultPanel(maxHeight: CGFloat) -> some View {
@@ -288,16 +372,6 @@ struct SendPushView: View {
         }
     }
 
-    private var applyTemplateToolbarButton: some View {
-        Button {
-            state.applyTemplateForCurrentEvent()
-            payloadFormatMessage = nil
-        } label: {
-            Label("Apply Template", systemImage: "doc.badge.gearshape")
-        }
-        .help("Apply Template")
-    }
-
     private var validateToolbarButton: some View {
         Button {
             _ = state.validatePayload()
@@ -305,6 +379,15 @@ struct SendPushView: View {
             Label("Validate", systemImage: "checkmark.seal")
         }
         .help("Validate")
+    }
+
+    private var applyTemplateToolbarButton: some View {
+        Button {
+            requestApplyTemplateAction()
+        } label: {
+            Label("Apply Template", systemImage: "doc.badge.gearshape")
+        }
+        .help("Apply Template")
     }
 
     private var formatJSONToolbarButton: some View {
@@ -322,11 +405,23 @@ struct SendPushView: View {
         } label: {
             Label("Use Current Timestamp", systemImage: "clock.arrow.circlepath")
         }
+        .disabled(!state.isLiveActivityMode)
         .help("Use Current Timestamp")
+    }
+
+    private var clearFormToolbarButton: some View {
+        Button {
+            activeAlert = .clearForm
+        } label: {
+            Label("Clear", systemImage: "trash")
+        }
+        .disabled(state.isSending)
+        .help("Clear Form")
     }
 
     private var sendPushToolbarButton: some View {
         Button {
+            state.clearResultState()
             Task {
                 await state.sendPush(modelContext: modelContext)
             }
@@ -343,10 +438,102 @@ struct SendPushView: View {
         .disabled(!state.canSend)
     }
 
-    private var shouldShowResultPanel: Bool {
-        state.result != nil ||
-        state.sendErrorMessage != nil ||
-        state.infoMessage != nil
+    private var pushTypeSelection: Binding<APNsPushType> {
+        Binding(
+            get: { state.pushType },
+            set: { newValue in
+                requestTemplateAction(.pushType(newValue))
+            }
+        )
+    }
+
+    private var eventSelection: Binding<LiveActivityEvent> {
+        Binding(
+            get: { state.event },
+            set: { newValue in
+                requestTemplateAction(.event(newValue))
+            }
+        )
+    }
+
+    private func requestTemplateAction(_ action: PendingTemplateAction) {
+        if action.matchesCurrentSelection(state) {
+            return
+        }
+
+        if state.requiresTemplateOverwriteConfirmation() {
+            pendingTemplateAction = action
+            activeAlert = .templateOverwrite
+            return
+        }
+
+        applyTemplateAction(action)
+    }
+
+    private func requestApplyTemplateAction() {
+        if state.requiresTemplateOverwriteConfirmation() {
+            pendingTemplateAction = .applyCurrentSelection
+            activeAlert = .templateOverwrite
+            return
+        }
+
+        state.applyTemplateForCurrentSelection()
+        payloadFormatMessage = nil
+    }
+
+    private func applyPendingTemplateAction() {
+        guard let action = pendingTemplateAction else { return }
+        applyTemplateAction(action)
+        pendingTemplateAction = nil
+    }
+
+    private func applyTemplateAction(_ action: PendingTemplateAction) {
+        switch action {
+        case .applyCurrentSelection:
+            state.applyTemplateForCurrentSelection()
+            payloadFormatMessage = nil
+        case let .pushType(pushType):
+            state.pushType = pushType
+        case let .event(event):
+            state.event = event
+        }
+    }
+
+    private func alertContent(for alert: PresentedAlert) -> Alert {
+        switch alert {
+        case .clearForm:
+            return Alert(
+                title: Text("Clear Send Form?"),
+                message: Text("This will clear credentials, target, payload, and current result."),
+                primaryButton: .destructive(Text("Clear")) {
+                    state.resetSendFormToDefaults()
+                    payloadFormatMessage = nil
+                },
+                secondaryButton: .cancel()
+            )
+        case .templateOverwrite:
+            return Alert(
+                title: Text("Overwrite Payload with Template?"),
+                message: Text(templateOverwriteMessage(for: pendingTemplateAction)),
+                primaryButton: .destructive(Text("Apply")) {
+                    applyPendingTemplateAction()
+                },
+                secondaryButton: .cancel {
+                    pendingTemplateAction = nil
+                }
+            )
+        }
+    }
+
+    private func templateOverwriteMessage(for action: PendingTemplateAction?) -> String {
+        switch action {
+        case .pushType, .event:
+            return "Switching selection will apply a new template and overwrite the current payload."
+        case .applyCurrentSelection:
+            return "Applying template will overwrite the current payload."
+        case nil:
+            return "Applying template will overwrite the current payload."
+        }
     }
 
     private func formatPayload(trigger: FormatTrigger) {
@@ -422,7 +609,11 @@ struct SendPushView: View {
     }
 
     private func layoutMode(for width: CGFloat) -> LayoutMode {
-        width >= wideLayoutThreshold ? .wide : .compact
+        width >= max(wideLayoutThreshold, wideMinimumRequiredWidth) ? .wide : .compact
+    }
+
+    private var wideMinimumRequiredWidth: CGFloat {
+        wideLeftColumnMinWidth + wideRightColumnMinWidth + horizontalPadding * 2 + splitDividerWidthAllowance
     }
 
     private func handleP8Import(result: Result<[URL], Error>) {
@@ -467,6 +658,30 @@ private enum LayoutMode {
 private enum FormatTrigger {
     case manual
     case automatic
+}
+
+private enum PendingTemplateAction {
+    case applyCurrentSelection
+    case pushType(APNsPushType)
+    case event(LiveActivityEvent)
+
+    func matchesCurrentSelection(_ state: PushToolState) -> Bool {
+        switch self {
+        case .applyCurrentSelection:
+            return false
+        case let .pushType(pushType):
+            return state.pushType == pushType
+        case let .event(event):
+            return state.event == event
+        }
+    }
+}
+
+private enum PresentedAlert: Int, Identifiable {
+    case clearForm
+    case templateOverwrite
+
+    var id: Int { rawValue }
 }
 
 private enum TimestampUpdateError: LocalizedError {

@@ -3,6 +3,7 @@ import Foundation
 enum CurlCommandBuilder {
     static func build(
         environment: APNsEnvironment,
+        pushType: APNsPushType,
         token: String,
         topic: String,
         payloadJSON: String,
@@ -11,7 +12,7 @@ enum CurlCommandBuilder {
     ) -> String {
         var headers = [
             "-H 'authorization: bearer <JWT>'",
-            "-H 'apns-push-type: liveactivity'",
+            "-H 'apns-push-type: \(pushType.rawValue)'",
             "-H 'apns-topic: \(escapeSingleQuotes(topic))'",
             "-H 'apns-priority: \(priority)'"
         ]
@@ -30,6 +31,7 @@ enum CurlCommandBuilder {
     static func build(from record: PushHistoryRecord) -> String {
         build(
             environment: record.environment,
+            pushType: record.pushType,
             token: record.deviceToken,
             topic: record.topic,
             payloadJSON: record.payloadJSON,

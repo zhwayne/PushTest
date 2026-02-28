@@ -39,12 +39,24 @@ final class PushToolState {
     var importedP8Filename: String?
 
     var environment: APNsEnvironment = .sandbox
-    var event: LiveActivityEvent = .start
+    var pushType: APNsPushType = .alert {
+        didSet {
+            guard pushType != oldValue else { return }
+            applyTemplateForCurrentSelectionIfNeeded()
+        }
+    }
+    var event: LiveActivityEvent = .start {
+        didSet {
+            guard event != oldValue else { return }
+            guard isLiveActivityMode else { return }
+            applyTemplateForCurrentSelectionIfNeeded()
+        }
+    }
     var deviceToken: String = ""
     var priority: Int = 10
     var collapseID: String = ""
     var topicOverride: String = ""
-    var payloadJSON: String = LiveActivityPayloadTemplates.template(for: .start)
+    var payloadJSON: String = APNsPayloadTemplates.template(pushType: .alert, event: .start)
 
     var validationErrors: [String] = []
     var result: APNsSendResult?
@@ -55,6 +67,9 @@ final class PushToolState {
 
     @ObservationIgnored
     private let sender: APNsSending
+
+    @ObservationIgnored
+    private var isReplayingHistory = false
 
     init() {
         sender = APNsClient()
@@ -72,15 +87,41 @@ final class PushToolState {
         credentials.isValid
     }
 
+    var isLiveActivityMode: Bool {
+        pushType.isLiveActivity
+    }
+
+    var defaultTopicDescription: String {
+        let bundle = bundleID.trimmed.nilIfEmpty ?? "<BundleID>"
+        return pushType.defaultTopic(for: bundle)
+    }
+
     var canSend: Bool {
         !isSending &&
         !deviceToken.trimmed.isEmpty &&
         hasValidCredentials
     }
 
-    func applyTemplateForCurrentEvent() {
-        payloadJSON = LiveActivityPayloadTemplates.template(for: event)
+    func applyTemplateForCurrentSelection() {
+        payloadJSON = APNsPayloadTemplates.template(pushType: pushType, event: event)
         validationErrors = []
+    }
+
+    func requiresTemplateOverwriteConfirmation() -> Bool {
+        guard !payloadJSON.trimmed.isEmpty else { return false }
+        return !payloadMatchesCurrentTemplate()
+    }
+
+    func payloadMatchesCurrentTemplate() -> Bool {
+        let currentTemplate = APNsPayloadTemplates.template(pushType: pushType, event: event)
+
+        do {
+            let normalizedPayload = try JSONPayloadFormatter.format(payloadJSON)
+            let normalizedTemplate = try JSONPayloadFormatter.format(currentTemplate)
+            return normalizedPayload == normalizedTemplate
+        } catch {
+            return false
+        }
     }
 
     func clearCredentials() {
@@ -110,7 +151,11 @@ final class PushToolState {
             validationErrors.append("Push token is required.")
         }
 
-        let payloadErrors = PayloadValidator.validate(payloadJSON: payloadJSON, event: event)
+        let payloadErrors = PayloadValidator.validate(
+            payloadJSON: payloadJSON,
+            event: event,
+            pushType: pushType
+        )
         validationErrors.append(contentsOf: payloadErrors)
 
         return validationErrors.isEmpty
@@ -118,6 +163,8 @@ final class PushToolState {
 
     func loadFromHistory(_ record: PushHistoryRecord) {
         selectedTab = .send
+        isReplayingHistory = true
+        defer { isReplayingHistory = false }
 
         if let teamID = record.credentialTeamID?.nilIfEmpty,
            let keyID = record.credentialKeyID?.nilIfEmpty,
@@ -131,6 +178,7 @@ final class PushToolState {
         clearImportedP8State()
 
         environment = record.environment
+        pushType = record.pushType
         event = record.event
         deviceToken = record.deviceToken
         priority = record.priority
@@ -145,10 +193,7 @@ final class PushToolState {
     }
 
     func sendPush(modelContext: ModelContext) async {
-        sendErrorMessage = nil
-        infoMessage = nil
-        result = nil
-        requestTopic = nil
+        clearResultState()
 
         guard validatePayload() else {
             sendErrorMessage = "Validation failed. Fix payload or token and try again."
@@ -165,6 +210,7 @@ final class PushToolState {
 
         let draft = PushRequestDraft(
             event: event,
+            pushType: pushType,
             deviceToken: deviceToken,
             priority: priority,
             collapseID: collapseID,
@@ -172,7 +218,7 @@ final class PushToolState {
             topicOverride: topicOverride
         )
 
-        let topic = draft.normalizedTopicOverride ?? "\(credentials.bundleID).push-type.liveactivity"
+        let topic = draft.normalizedTopicOverride ?? draft.pushType.defaultTopic(for: credentials.bundleID)
         requestTopic = topic
 
         do {
@@ -202,6 +248,32 @@ final class PushToolState {
     private func clearImportedP8State() {
         p8PEM = ""
         importedP8Filename = nil
+    }
+
+    func clearResultState() {
+        sendErrorMessage = nil
+        infoMessage = nil
+        result = nil
+        requestTopic = nil
+    }
+
+    func resetSendFormToDefaults() {
+        clearCredentials()
+        environment = .sandbox
+        pushType = .alert
+        event = .start
+        deviceToken = ""
+        priority = 10
+        collapseID = ""
+        topicOverride = ""
+        payloadJSON = APNsPayloadTemplates.template(pushType: .alert, event: .start)
+        validationErrors = []
+        clearResultState()
+    }
+
+    private func applyTemplateForCurrentSelectionIfNeeded() {
+        guard !isReplayingHistory else { return }
+        applyTemplateForCurrentSelection()
     }
 
 }

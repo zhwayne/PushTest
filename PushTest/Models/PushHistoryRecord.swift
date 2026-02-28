@@ -9,6 +9,7 @@ final class PushHistoryRecord {
     var deviceToken: String
     var tokenMasked: String
     var topic: String
+    var pushTypeRaw: String?
     var topicOverrideInput: String?
     var credentialTeamID: String?
     var credentialKeyID: String?
@@ -31,6 +32,7 @@ final class PushHistoryRecord {
         deviceToken: String,
         tokenMasked: String,
         topic: String,
+        pushTypeRaw: String? = nil,
         topicOverrideInput: String?,
         credentialTeamID: String? = nil,
         credentialKeyID: String? = nil,
@@ -52,6 +54,7 @@ final class PushHistoryRecord {
         self.deviceToken = deviceToken
         self.tokenMasked = tokenMasked
         self.topic = topic
+        self.pushTypeRaw = pushTypeRaw
         self.topicOverrideInput = topicOverrideInput
         self.credentialTeamID = credentialTeamID
         self.credentialKeyID = credentialKeyID
@@ -76,5 +79,19 @@ final class PushHistoryRecord {
     var environment: APNsEnvironment {
         get { APNsEnvironment(rawValue: environmentRaw) ?? .sandbox }
         set { environmentRaw = newValue.rawValue }
+    }
+
+    var pushType: APNsPushType {
+        get { APNsPushType(rawValue: pushTypeRaw ?? "") ?? .alert }
+        set { pushTypeRaw = newValue.rawValue }
+    }
+
+    var unsupportedPushTypeRaw: String? {
+        guard let raw = pushTypeRaw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return nil
+        }
+
+        return APNsPushType(rawValue: raw) == nil ? raw : nil
     }
 }

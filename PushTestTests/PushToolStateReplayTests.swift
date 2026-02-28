@@ -9,6 +9,7 @@ final class PushToolStateReplayTests: XCTestCase {
         let state = makeState()
         state.selectedTab = .history
         state.environment = .production
+        state.pushType = .background
         state.event = .end
         state.deviceToken = "old-token"
         state.priority = 5
@@ -26,6 +27,7 @@ final class PushToolStateReplayTests: XCTestCase {
             priority: 10,
             collapseID: "collapse-123",
             topic: "com.example.app.push-type.liveactivity",
+            pushTypeRaw: APNsPushType.background.rawValue,
             topicOverrideInput: "custom.topic",
             credentialTeamID: "TEAM12345",
             credentialKeyID: "KEY12345",
@@ -37,6 +39,7 @@ final class PushToolStateReplayTests: XCTestCase {
 
         XCTAssertEqual(state.selectedTab, .send)
         XCTAssertEqual(state.environment, .sandbox)
+        XCTAssertEqual(state.pushType, .background)
         XCTAssertEqual(state.event, .update)
         XCTAssertEqual(state.deviceToken, "replay-token")
         XCTAssertEqual(state.priority, 10)
@@ -73,6 +76,7 @@ final class PushToolStateReplayTests: XCTestCase {
         XCTAssertNil(state.sendErrorMessage)
         XCTAssertNil(state.infoMessage)
         XCTAssertTrue(state.validationErrors.isEmpty)
+        XCTAssertEqual(state.pushType, .liveactivity)
     }
 
     func testReplayDoesNotAutoImportP8EvenWhenHistoryContainsPathOrBookmark() throws {
@@ -98,6 +102,7 @@ final class PushToolStateReplayTests: XCTestCase {
         )
 
         let record = makeRecord(
+            pushTypeRaw: APNsPushType.alert.rawValue,
             topicOverrideInput: "custom.topic",
             credentialTeamID: "TEAM12345",
             credentialKeyID: "TESTKEYID",
@@ -111,6 +116,7 @@ final class PushToolStateReplayTests: XCTestCase {
         XCTAssertEqual(state.teamID, "TEAM12345")
         XCTAssertEqual(state.keyID, "TESTKEYID")
         XCTAssertEqual(state.bundleID, "com.example.app")
+        XCTAssertEqual(state.pushType, .alert)
         XCTAssertEqual(state.p8PEM, "")
         XCTAssertNil(state.importedP8Filename)
     }
@@ -129,6 +135,7 @@ final class PushToolStateReplayTests: XCTestCase {
         XCTAssertEqual(state.teamID, "")
         XCTAssertEqual(state.keyID, "")
         XCTAssertEqual(state.bundleID, "")
+        XCTAssertEqual(state.pushType, .liveactivity)
         XCTAssertEqual(state.p8PEM, "")
         XCTAssertNil(state.importedP8Filename)
     }
@@ -145,6 +152,20 @@ final class PushToolStateReplayTests: XCTestCase {
         XCTAssertEqual(state.topicOverride, "")
     }
 
+    func testReplayFallsBackToAlertWhenHistoryPushTypeMissing() {
+        let state = makeState()
+        state.pushType = .background
+
+        let record = makeRecord(
+            pushTypeRaw: nil,
+            topicOverrideInput: "topic"
+        )
+
+        state.loadFromHistory(record)
+
+        XCTAssertEqual(state.pushType, .alert)
+    }
+
     private func makeRecord(
         environment: APNsEnvironment = .sandbox,
         event: LiveActivityEvent = .start,
@@ -152,6 +173,7 @@ final class PushToolStateReplayTests: XCTestCase {
         priority: Int = 10,
         collapseID: String? = nil,
         topic: String = "com.example.app.push-type.liveactivity",
+        pushTypeRaw: String? = APNsPushType.liveactivity.rawValue,
         topicOverrideInput: String?,
         credentialTeamID: String? = nil,
         credentialKeyID: String? = nil,
@@ -169,6 +191,7 @@ final class PushToolStateReplayTests: XCTestCase {
             deviceToken: token,
             tokenMasked: TokenMasking.masked(token),
             topic: topic,
+            pushTypeRaw: pushTypeRaw,
             topicOverrideInput: topicOverrideInput,
             credentialTeamID: credentialTeamID,
             credentialKeyID: credentialKeyID,

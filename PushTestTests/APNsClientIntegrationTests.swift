@@ -64,6 +64,39 @@ final class APNsClientIntegrationTests: XCTestCase {
         XCTAssertEqual(result.reason, "BadDeviceToken")
         XCTAssertEqual(result.apnsID, "apns-fail-id")
     }
+
+    func testSendUsesSelectedPushTypeAndNonLiveDefaultTopic() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+
+        let client = APNsClient(session: session)
+        let credentials = TestFixtures.makeCredentials(bundleID: "com.example.nonlive")
+        let draft = TestFixtures.makeDraft(
+            event: .update,
+            pushType: .background,
+            token: "token-background"
+        )
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://api.sandbox.push.apple.com/3/device/token-background")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "apns-push-type"), "background")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "apns-topic"), "com.example.nonlive")
+
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["apns-id": "apns-nonlive-id"]
+            )!
+            return (response, Data())
+        }
+
+        let result = try await client.send(draft: draft, credentials: credentials, environment: .sandbox)
+
+        XCTAssertEqual(result.statusCode, 200)
+        XCTAssertEqual(result.apnsID, "apns-nonlive-id")
+    }
 }
 
 private final class MockURLProtocol: URLProtocol {

@@ -2,6 +2,7 @@ import Foundation
 
 struct PushRequestDraft {
     var event: LiveActivityEvent
+    var pushType: APNsPushType
     var deviceToken: String
     var priority: Int
     var collapseID: String?
