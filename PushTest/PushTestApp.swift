@@ -1,17 +1,25 @@
-//
-//  PushTestApp.swift
-//  PushTest
-//
-//  Created by zw on 2026/2/28.
-//
-
+import SwiftData
 import SwiftUI
 
 @main
 struct PushTestApp: App {
+    @State private var state = PushToolState()
+
+    private let modelContainer: ModelContainer = {
+        do {
+            let schema = Schema([
+                PushHistoryRecord.self
+            ])
+            return try ModelContainer(for: schema)
+        } catch {
+            fatalError("Failed to create ModelContainer: \(error)")
+        }
+    }()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(state: state)
         }
+        .modelContainer(modelContainer)
     }
 }
