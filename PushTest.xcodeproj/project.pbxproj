@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		D0B4A1012FD00A1C00B7A5E1 /* Highlightr in Frameworks */ = {isa = PBXBuildFile; productRef = D0B4A1022FD00A1C00B7A5E1 /* Highlightr */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		DBC100112F5289AA00DD1908 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -39,6 +43,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D0B4A1012FD00A1C00B7A5E1 /* Highlightr in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,6 +95,7 @@
 			);
 			name = PushTest;
 			packageProductDependencies = (
+				D0B4A1022FD00A1C00B7A5E1 /* Highlightr */,
 			);
 			productName = PushTest;
 			productReference = DB0F0EC52F5280CD00DD1908 /* PushTest.app */;
@@ -146,6 +152,9 @@
 			);
 			mainGroup = DB0F0EBC2F5280CD00DD1908;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D0B4A1032FD00A1C00B7A5E1 /* XCRemoteSwiftPackageReference "Highlightr" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DB0F0EC62F5280CD00DD1908 /* Products */;
 			projectDirPath = "";
@@ -467,6 +476,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D0B4A1032FD00A1C00B7A5E1 /* XCRemoteSwiftPackageReference "Highlightr" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/raspu/Highlightr.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.3.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D0B4A1022FD00A1C00B7A5E1 /* Highlightr */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D0B4A1032FD00A1C00B7A5E1 /* XCRemoteSwiftPackageReference "Highlightr" */;
+			productName = Highlightr;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = DB0F0EBD2F5280CD00DD1908 /* Project object */;
 }

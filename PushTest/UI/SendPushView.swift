@@ -7,9 +7,10 @@ struct SendPushView: View {
     @Bindable var state: PushToolState
 
     @State private var isImportingP8 = false
+    @State private var payloadFormatMessage: String?
 
     private let wideLayoutThreshold: CGFloat = 1000
-    private let sidebarWidth: CGFloat = 390
+    private let sidebarWidth: CGFloat = 420
     private let resultMaxHeight: CGFloat = 240
 
     var body: some View {
@@ -36,6 +37,7 @@ struct SendPushView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 applyTemplateToolbarButton
                 validateToolbarButton
+                formatJSONToolbarButton
                 sendPushToolbarButton
             }
         }
@@ -140,7 +142,8 @@ struct SendPushView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(maxWidth: .infinity)
+                    
+                    Spacer(minLength: 0)
 
                     TextField("Collapse ID (optional)", text: $state.collapseID)
                         .textFieldStyle(.roundedBorder)
@@ -173,6 +176,12 @@ struct SendPushView: View {
                     }
                 }
 
+                if let payloadFormatMessage {
+                    Text(payloadFormatMessage)
+                        .foregroundStyle(.red)
+                        .font(.footnote)
+                }
+
                 Text("Security note: History stores full token values in local SwiftData for replay. UI shows masked token only.")
                     .font(.footnote)
                     .foregroundStyle(.orange)
@@ -195,13 +204,21 @@ struct SendPushView: View {
     }
 
     private var payloadEditorBase: some View {
-        TextEditor(text: $state.payloadJSON)
-            .font(.system(.body, design: .monospaced))
-            .padding(4)
-            .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(state.validationErrors.isEmpty ? Color.gray.opacity(0.2) : .red, lineWidth: 1)
+        JSONCodeEditor(
+            text: $state.payloadJSON,
+            syntaxHighlighter: .shared,
+            onTextChange: { _ in
+                payloadFormatMessage = nil
+            },
+            onEditingEnded: {
+                formatPayload(trigger: .automatic)
             }
+        )
+        .padding(4)
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(state.validationErrors.isEmpty ? Color.gray.opacity(0.2) : .red, lineWidth: 1)
+        }
     }
 
     private func resultPanel(maxHeight: CGFloat) -> some View {
@@ -272,9 +289,11 @@ struct SendPushView: View {
     private var applyTemplateToolbarButton: some View {
         Button {
             state.applyTemplateForCurrentEvent()
+            payloadFormatMessage = nil
         } label: {
             Label("Apply Template", systemImage: "doc.badge.gearshape")
         }
+        .help("Apply Template")
     }
 
     private var validateToolbarButton: some View {
@@ -283,6 +302,16 @@ struct SendPushView: View {
         } label: {
             Label("Validate", systemImage: "checkmark.seal")
         }
+        .help("Validate")
+    }
+
+    private var formatJSONToolbarButton: some View {
+        Button {
+            formatPayload(trigger: .manual)
+        } label: {
+            Label("Format JSON", systemImage: "curlybraces.square")
+        }
+        .help("Format JSON")
     }
 
     private var sendPushToolbarButton: some View {
@@ -297,6 +326,7 @@ struct SendPushView: View {
                 Label("Send Push", systemImage: "paperplane")
             }
         }
+        .help(state.isSending ? "Sending..." : "Send Push")
         .buttonStyle(.borderedProminent)
         .disabled(!state.canSend)
     }
@@ -305,6 +335,23 @@ struct SendPushView: View {
         state.result != nil ||
         state.sendErrorMessage != nil ||
         state.infoMessage != nil
+    }
+
+    private func formatPayload(trigger: FormatTrigger) {
+        do {
+            let formatted = try JSONPayloadFormatter.format(state.payloadJSON)
+            if formatted != state.payloadJSON {
+                state.payloadJSON = formatted
+            }
+            payloadFormatMessage = nil
+        } catch {
+            switch trigger {
+            case .manual:
+                payloadFormatMessage = "Format failed: \(error.localizedDescription)"
+            case .automatic:
+                payloadFormatMessage = "Auto-format skipped: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func layoutMode(for width: CGFloat) -> LayoutMode {
@@ -348,4 +395,9 @@ struct SendPushView: View {
 private enum LayoutMode {
     case wide
     case compact
+}
+
+private enum FormatTrigger {
+    case manual
+    case automatic
 }
