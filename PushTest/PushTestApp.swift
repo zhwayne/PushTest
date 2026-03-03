@@ -22,5 +22,15 @@ struct PushTestApp: App {
         }
         .modelContainer(modelContainer)
         .defaultSize(width: 900, height: 700)
+
+        WindowGroup("History Detail", for: HistoryDetailSnapshot.self) { snapshotBinding in
+            if let snapshot = snapshotBinding.wrappedValue {
+                HistoryDetailWindowView(state: state, snapshot: snapshot)
+                    .navigationTitle(snapshot.createdAt.formatted(date: .abbreviated, time: .standard))
+            } else {
+                ContentUnavailableView("No History Detail", systemImage: "doc.text.magnifyingglass")
+            }
+        }
+        .defaultSize(width: 760, height: 620)
     }
 }

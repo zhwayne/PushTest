@@ -3,6 +3,7 @@ import SwiftUI
 
 struct HistoryView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
     @Query(sort: \PushHistoryRecord.createdAt, order: .reverse) private var records: [PushHistoryRecord]
 
     @Bindable var state: PushToolState
@@ -12,28 +13,33 @@ struct HistoryView: View {
     @State private var selectedEvent: LiveActivityEvent?
     @State private var statusFilter: StatusFilter = .all
     @State private var searchText: String = ""
-    @State private var selectedRecordIDs = Set<PushHistoryRecord.ID>()
+    @State private var selectedRecordID: PushHistoryRecord.ID?
     @State private var isClearHistoryConfirmationPresented = false
-    @State private var sheetRecord: PushHistoryRecord?
     @State private var localMessage: String?
     @State private var localError: String?
+    @State private var lastOpenedDetailRecordID: PushHistoryRecord.ID?
+    @State private var lastOpenedDetailAt: Date = .distantPast
 
-    private let historySplitThreshold: CGFloat = 980
-    private let historyTableMinWidth: CGFloat = 560
-    private let detailPanelMinWidth: CGFloat = 320
+    private let detailOpenDedupInterval: TimeInterval = 0.25
 
     var body: some View {
-        GeometryReader { proxy in
-            let isWideLayout = proxy.size.width >= historySplitThreshold
+        VStack(alignment: .leading, spacing: 12) {
+            controls
+            actionsBar
+            feedbackMessages
 
-            VStack(alignment: .leading, spacing: 12) {
-                controls
-                actionsBar
-                feedbackMessages
-                historyContent(isWideLayout: isWideLayout)
+            if filteredRecords.isEmpty {
+                ContentUnavailableView(
+                    "No History",
+                    systemImage: "clock.badge.xmark",
+                    description: Text("Send a push request to populate history.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                historyTable
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(16)
         .alert("Clear History?", isPresented: $isClearHistoryConfirmationPresented) {
             Button("Clear", role: .destructive) {
@@ -43,24 +49,14 @@ struct HistoryView: View {
         } message: {
             Text("This will permanently remove all history records.")
         }
-        .sheet(item: $sheetRecord) { record in
-            NavigationStack {
-                detailPanel(for: record, showsDismissButton: true)
-                    .navigationTitle("History Detail")
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") {
-                                sheetRecord = nil
-                            }
-                        }
-                    }
+        .onChange(of: filteredRecordIDs) { _, visibleIDs in
+            if let selectedRecordID,
+               !visibleIDs.contains(selectedRecordID) {
+                self.selectedRecordID = nil
             }
         }
-        .onChange(of: filteredRecordIDs) { _, visibleIDs in
-            selectedRecordIDs = selectedRecordIDs.intersection(visibleIDs)
-            if selectedRecord == nil {
-                sheetRecord = nil
-            }
+        .onChange(of: selectedRecordID) { _, _ in
+            localError = nil
         }
     }
 
@@ -75,97 +71,93 @@ struct HistoryView: View {
                 Text(localError)
                     .foregroundStyle(.red)
             }
-        }
-    }
 
-    private func historyContent(isWideLayout: Bool) -> some View {
-        Group {
-            if filteredRecords.isEmpty {
-                ContentUnavailableView(
-                    "No History",
-                    systemImage: "clock.badge.xmark",
-                    description: Text("Send a push request to populate history.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if isWideLayout {
-                HSplitView {
-                    historyTable
-                        .frame(minWidth: historyTableMinWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-                    Group {
-                        if let selectedRecord {
-                            detailPanel(for: selectedRecord, showsDismissButton: false)
-                        } else {
-                            ContentUnavailableView(
-                                "Select a Record",
-                                systemImage: "list.bullet.rectangle.portrait",
-                                description: Text("Choose a row to inspect full request and response details.")
-                            )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                    }
-                    .frame(minWidth: detailPanelMinWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            } else {
-                historyTable
-                    .onChange(of: selectedRecordIDs) { _, _ in
-                        localError = nil
-                        if let selectedRecord {
-                            sheetRecord = selectedRecord
-                        }
-                    }
-            }
+            Text("Double-click a row to open details in a new window.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
     private var historyTable: some View {
-        Table(filteredRecords, selection: $selectedRecordIDs) {
+        Table(filteredRecords, selection: $selectedRecordID) {
             TableColumn("Time") { record in
-                Text(record.createdAt.formatted(date: .abbreviated, time: .standard))
-                    .font(.subheadline)
+                detailCell {
+                    Text(record.createdAt.formatted(date: .abbreviated, time: .standard))
+                        .font(.subheadline)
+                }
             }
             .width(min: 180, ideal: 200)
 
             TableColumn("Environment") { record in
-                Text(record.environment.displayName)
-                    .font(.caption)
+                detailCell {
+                    Text(record.environment.displayName)
+                        .font(.caption)
+                }
             }
             .width(min: 110, ideal: 130)
 
             TableColumn("Push Type") { record in
-                pushTypeBadge(for: record)
+                detailCell {
+                    pushTypeBadge(for: record)
+                }
             }
             .width(min: 130, ideal: 160)
 
             TableColumn("Event") { record in
-                Text(record.event.displayName)
-                    .font(.caption)
+                detailCell {
+                    Text(record.event.displayName)
+                        .font(.caption)
+                }
             }
             .width(min: 90, ideal: 110)
 
             TableColumn("Status") { record in
-                Text("\(record.statusCode)")
-                    .font(.system(.caption, design: .monospaced))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(statusColor(for: record.statusCode).opacity(0.15), in: .capsule)
+                detailCell {
+                    Text("\(record.statusCode)")
+                        .font(.system(.caption, design: .monospaced))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(statusColor(for: record.statusCode).opacity(0.15), in: .capsule)
+                }
             }
             .width(min: 90, ideal: 105)
 
             TableColumn("Latency") { record in
-                Text("\(record.latencyMs) ms")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                detailCell {
+                    Text("\(record.latencyMs) ms")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .width(min: 90, ideal: 110)
 
             TableColumn("Token Suffix") { record in
-                Text(tokenSuffix(from: record.tokenMasked))
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                detailCell {
+                    Text(tokenSuffix(from: record.tokenMasked))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
             }
             .width(min: 130, ideal: 160)
+        }
+        .contextMenu {
+            if let selectedRecord {
+                Button("Open Detail") {
+                    openDetailWindow(for: selectedRecord)
+                }
+
+                Button("Replay") {
+                    replay(selectedRecord)
+                }
+                .disabled(selectedRecord.unsupportedPushTypeRaw != nil)
+
+                Button("Copy cURL") {
+                    copyCURL(for: selectedRecord)
+                }
+            }
+        }
+        .onTapGesture(count: 2) {
+            openDetailWindowForSelectedRecord()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -192,81 +184,6 @@ struct HistoryView: View {
             }
             .buttonStyle(.bordered)
         }
-    }
-
-    private func detailPanel(for record: PushHistoryRecord, showsDismissButton: Bool) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if showsDismissButton {
-                    HStack {
-                        Spacer()
-                        Button("Close") {
-                            sheetRecord = nil
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                }
-
-                GroupBox("Basic") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        detailRow(label: "Time", value: record.createdAt.formatted(date: .abbreviated, time: .standard))
-                        detailRow(label: "Environment", value: record.environment.displayName)
-                        detailRow(label: "Push Type", value: record.unsupportedPushTypeRaw ?? record.pushType.displayName)
-                        detailRow(label: "Event", value: record.event.displayName)
-                        detailRow(label: "Status", value: "\(record.statusCode)")
-                        detailRow(label: "Latency", value: "\(record.latencyMs) ms")
-                    }
-                }
-
-                GroupBox("Request") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        detailRow(label: "Topic", value: record.topic)
-                        detailRow(label: "Priority", value: "\(record.priority)")
-                        detailRow(label: "Collapse ID", value: record.collapseID?.isEmpty == false ? record.collapseID! : "-")
-                        detailRow(label: "Token", value: record.tokenMasked)
-                    }
-                }
-
-                GroupBox("Response") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        detailRow(label: "apns-id", value: record.apnsID?.isEmpty == false ? record.apnsID! : "-")
-                        detailRow(label: "Reason", value: record.reason?.isEmpty == false ? record.reason! : "-")
-                        detailRow(label: "Body", value: record.responseBody?.isEmpty == false ? record.responseBody! : "-")
-                    }
-                }
-
-                GroupBox("Payload") {
-                    ScrollView {
-                        Text(record.payloadJSON)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(minHeight: 150, maxHeight: 240)
-                }
-
-                if let unsupportedRaw = record.unsupportedPushTypeRaw {
-                    Text("Replay unavailable for unsupported push type \"\(unsupportedRaw)\".")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                }
-
-                HStack(spacing: 10) {
-                    Button("Replay") {
-                        replay(record)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(record.unsupportedPushTypeRaw != nil)
-
-                    Button("Copy cURL") {
-                        copyCURL(for: record)
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var controls: some View {
@@ -372,7 +289,7 @@ struct HistoryView: View {
     }
 
     private var selectedRecord: PushHistoryRecord? {
-        guard let selectedID = selectedRecordIDs.first else {
+        guard let selectedID = selectedRecordID else {
             return nil
         }
         return filteredRecords.first { $0.id == selectedID } ?? records.first { $0.id == selectedID }
@@ -412,6 +329,28 @@ struct HistoryView: View {
         localMessage = "Loaded request into Send."
     }
 
+    private func openDetailWindow(for record: PushHistoryRecord) {
+        let now = Date()
+        if lastOpenedDetailRecordID == record.id,
+           now.timeIntervalSince(lastOpenedDetailAt) < detailOpenDedupInterval {
+            return
+        }
+        lastOpenedDetailRecordID = record.id
+        lastOpenedDetailAt = now
+        openWindow(value: HistoryDetailSnapshot(record: record))
+    }
+
+    private func openDetailWindowForSelectedRecord() {
+        guard let selectedRecord else { return }
+        openDetailWindow(for: selectedRecord)
+    }
+
+    private func detailCell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+    }
+
     private func copyCURLFromSelectedRecord() {
         guard let selectedRecord else { return }
         copyCURL(for: selectedRecord)
@@ -426,21 +365,12 @@ struct HistoryView: View {
     private func clearHistory() {
         do {
             try PushHistoryStore(context: modelContext).clearAll()
-            selectedRecordIDs = []
-            sheetRecord = nil
+            selectedRecordID = nil
             localMessage = "History cleared."
             localError = nil
         } catch {
             localError = "Failed to clear history: \(error.localizedDescription)"
             localMessage = nil
-        }
-    }
-
-    private func detailRow(label: String, value: String) -> some View {
-        LabeledContent(label) {
-            Text(value)
-                .font(.system(.body, design: .monospaced))
-                .textSelection(.enabled)
         }
     }
 

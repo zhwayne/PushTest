@@ -192,6 +192,37 @@ final class PushToolState {
         infoMessage = nil
     }
 
+    func loadFromHistorySnapshot(_ snapshot: HistoryDetailSnapshot) {
+        selectedTab = .send
+        isReplayingHistory = true
+        defer { isReplayingHistory = false }
+
+        if let teamID = snapshot.credentialTeamID?.nilIfEmpty,
+           let keyID = snapshot.credentialKeyID?.nilIfEmpty,
+           let bundleID = snapshot.credentialBundleID?.nilIfEmpty {
+            self.teamID = teamID
+            self.keyID = keyID
+            self.bundleID = bundleID
+        } else {
+            clearCredentials()
+        }
+        clearImportedP8State()
+
+        environment = snapshot.environment
+        pushType = snapshot.pushType
+        event = snapshot.event
+        deviceToken = snapshot.deviceToken
+        priority = snapshot.priority
+        collapseID = snapshot.collapseID ?? ""
+        topicOverride = snapshot.topicOverrideInput ?? ""
+        payloadJSON = snapshot.payloadJSON
+        validationErrors = []
+        result = nil
+        requestTopic = nil
+        sendErrorMessage = nil
+        infoMessage = nil
+    }
+
     func sendPush(modelContext: ModelContext) async {
         clearResultState()
 
