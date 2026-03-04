@@ -26,15 +26,40 @@ final class PushToolStateTemplateTests: XCTestCase {
         XCTAssertEqual((aps["content-available"] as? NSNumber)?.intValue, 1)
     }
 
-    func testChangingLiveActivityEventAutoAppliesTemplate() throws {
+    func testChangingLiveActivityEventUpdatesOnlyEventField() throws {
         let state = makeState()
         state.pushType = .liveactivity
+        state.payloadJSON = """
+        {
+          "aps": {
+            "event": "start",
+            "timestamp": 1700000000,
+            "content-state": {
+              "status": "custom-status",
+              "progress": 42
+            },
+            "alert": {
+              "title": "Custom title"
+            }
+          },
+          "custom": "keep-me"
+        }
+        """
 
         state.event = .end
 
         let root = try jsonObject(from: state.payloadJSON)
         let aps = try dictionaryValue(for: "aps", in: root)
         XCTAssertEqual(aps["event"] as? String, "end")
+        XCTAssertEqual((aps["timestamp"] as? NSNumber)?.intValue, 1_700_000_000)
+        XCTAssertEqual(root["custom"] as? String, "keep-me")
+
+        let contentState = try dictionaryValue(for: "content-state", in: aps)
+        XCTAssertEqual(contentState["status"] as? String, "custom-status")
+        XCTAssertEqual((contentState["progress"] as? NSNumber)?.intValue, 42)
+
+        let alert = try dictionaryValue(for: "alert", in: aps)
+        XCTAssertEqual(alert["title"] as? String, "Custom title")
     }
 
     func testReplayDoesNotOverwriteHistoricalPayload() {

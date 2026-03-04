@@ -60,6 +60,7 @@ struct HistoryView: View {
                 } label: {
                     Label("Clear History", systemImage: "trash")
                 }
+                .help("Clear all history.")
             }
         }
         .alert("Clear History?", isPresented: $isClearHistoryConfirmationPresented) {

@@ -375,9 +375,9 @@ struct SendPushView: View {
         Button {
             _ = state.validatePayload()
         } label: {
-            Label("Validate", systemImage: "checkmark.seal")
+            Label("Validate", systemImage: "checkmark.shield")
         }
-        .help("Validate")
+        .help("Validate.")
     }
 
     private var applyTemplateToolbarButton: some View {
@@ -386,26 +386,26 @@ struct SendPushView: View {
         } label: {
             Label("Apply Template", systemImage: "doc.badge.gearshape")
         }
-        .help("Apply Template")
+        .help("Apply template.")
     }
 
     private var formatJSONToolbarButton: some View {
         Button {
             formatPayload(trigger: .manual)
         } label: {
-            Label("Format JSON", systemImage: "curlybraces.square")
+            Label("Format JSON", systemImage: "ellipsis.curlybraces")
         }
-        .help("Format JSON")
+        .help("Format JSON.")
     }
 
     private var useCurrentTimestampToolbarButton: some View {
         Button {
             applyCurrentTimestamp()
         } label: {
-            Label("Use Current Timestamp", systemImage: "clock.arrow.circlepath")
+            Label("Use Current Timestamp", systemImage: "clock.arrow.trianglehead.2.counterclockwise.rotate.90")
         }
         .disabled(!state.isLiveActivityMode)
-        .help("Use Current Timestamp")
+        .help("Use current timestamp.")
     }
 
     private var clearFormToolbarButton: some View {
@@ -415,7 +415,7 @@ struct SendPushView: View {
             Label("Clear", systemImage: "trash")
         }
         .disabled(state.isSending)
-        .help("Clear Form")
+        .help("Clear form.")
     }
 
     private var sendPushToolbarButton: some View {
@@ -431,8 +431,18 @@ struct SendPushView: View {
                 Label("Send Push", systemImage: "paperplane")
             }
         }
-        .help(state.isSending ? "Sending..." : "Send Push")
+        .help(sendPushHelpText)
         .disabled(!state.canSend)
+    }
+
+    private var sendPushHelpText: String {
+        if state.isSending {
+            return "Sending..."
+        }
+        if state.canSend {
+            return "Send push."
+        }
+        return "Fill required fields."
     }
 
     private var pushTypeSelection: Binding<APNsPushType> {
@@ -448,7 +458,8 @@ struct SendPushView: View {
         Binding(
             get: { state.event },
             set: { newValue in
-                requestTemplateAction(.event(newValue))
+                guard state.event != newValue else { return }
+                state.event = newValue
             }
         )
     }

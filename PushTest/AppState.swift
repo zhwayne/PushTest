@@ -49,7 +49,7 @@ final class PushToolState {
         didSet {
             guard event != oldValue else { return }
             guard isLiveActivityMode else { return }
-            applyTemplateForCurrentSelectionIfNeeded()
+            applyLiveActivityEventToPayloadIfPossible()
         }
     }
     var deviceToken: String = ""
@@ -305,6 +305,41 @@ final class PushToolState {
     private func applyTemplateForCurrentSelectionIfNeeded() {
         guard !isReplayingHistory else { return }
         applyTemplateForCurrentSelection()
+    }
+
+    private func applyLiveActivityEventToPayloadIfPossible() {
+        guard !isReplayingHistory else { return }
+
+        guard let updatedPayload = payloadByUpdatingLiveActivityEvent(payloadJSON, event: event) else {
+            return
+        }
+
+        if updatedPayload != payloadJSON {
+            payloadJSON = updatedPayload
+        }
+    }
+
+    private func payloadByUpdatingLiveActivityEvent(_ text: String, event: LiveActivityEvent) -> String? {
+        guard let data = text.data(using: .utf8) else {
+            return nil
+        }
+
+        guard var rootObject = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+            return nil
+        }
+
+        var apsObject = (rootObject["aps"] as? [String: Any]) ?? [:]
+        apsObject["event"] = event.rawValue
+        rootObject["aps"] = apsObject
+
+        guard let updatedData = try? JSONSerialization.data(withJSONObject: rootObject, options: []) else {
+            return nil
+        }
+        guard let updatedText = String(data: updatedData, encoding: .utf8) else {
+            return nil
+        }
+
+        return (try? JSONPayloadFormatter.format(updatedText)) ?? updatedText
     }
 
 }
