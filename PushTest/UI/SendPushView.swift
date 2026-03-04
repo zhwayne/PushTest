@@ -45,15 +45,14 @@ struct SendPushView: View {
         .alert(item: $activeAlert, content: alertContent)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                sendPushToolbarButton
+                Spacer()
+                validateToolbarButton
                 applyTemplateToolbarButton
                 formatJSONToolbarButton
                 useCurrentTimestampToolbarButton
+                Spacer()
                 clearFormToolbarButton
-            }
-
-            ToolbarItemGroup(placement: .primaryAction) {
-                validateToolbarButton
-                sendPushToolbarButton
             }
         }
     }
@@ -433,8 +432,6 @@ struct SendPushView: View {
             }
         }
         .help(state.isSending ? "Sending..." : "Send Push")
-        .buttonStyle(.borderedProminent)
-        .tint(state.canSend ? .accentColor : .gray)
         .disabled(!state.canSend)
     }
 

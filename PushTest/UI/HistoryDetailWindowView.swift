@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+enum HistoryDetailWindowIdentity {
+    static let identifier = NSUserInterfaceItemIdentifier("PushTest.HistoryDetailWindow")
+}
+
 struct HistoryDetailSnapshot: Identifiable, Hashable, Codable {
     let id: UUID
     let createdAt: Date
@@ -76,6 +80,8 @@ struct HistoryDetailSnapshot: Identifiable, Hashable, Codable {
 }
 
 struct HistoryDetailWindowView: View {
+    @Environment(\.dismiss) private var dismiss
+
     let state: PushToolState
     let snapshot: HistoryDetailSnapshot
 
@@ -88,14 +94,6 @@ struct HistoryDetailWindowView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: contentSpacing) {
                 headerSection
-                actionsSection
-
-                if let feedbackMessage {
-                    Text(feedbackMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
                 overviewSection
                 requestSection
                 responseSection
@@ -103,6 +101,46 @@ struct HistoryDetailWindowView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    replay()
+                } label: {
+                    Label("Replay", systemImage: "highlighter")
+                }
+                .disabled(snapshot.unsupportedPushTypeRaw != nil)
+                .help(replayDisabledReason)
+                
+                Spacer()
+            }
+            
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    copy(snapshot.payloadJSON, successMessage: "Payload copied.")
+                } label: {
+                    Label("Payload", systemImage: "doc")
+                }
+                .help("Copy payload JSON to clipboard.")
+                
+                Button {
+                    copy(snapshot.deviceToken, successMessage: "Device token copied.")
+                } label: {
+                    Label("Token", systemImage: "key")
+                }
+                .disabled(snapshot.deviceToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Copy device token to clipboard.")
+                
+                Button {
+                    copy(snapshot.curlCommand, successMessage: "cURL command copied.")
+                } label: {
+                    Label("cURL", systemImage: "terminal")
+                }
+                .help("Copy cURL command to clipboard.")
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            feedbackMessageBar
         }
     }
 
@@ -121,41 +159,6 @@ struct HistoryDetailWindowView: View {
             }
             .font(.footnote)
             .foregroundStyle(.secondary)
-        }
-    }
-
-    private var actionsSection: some View {
-        HStack(spacing: 8) {
-            Button("Replay") {
-                replay()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(snapshot.unsupportedPushTypeRaw != nil)
-            .help(replayDisabledReason)
-
-            Button("Copy Payload") {
-                copy(snapshot.payloadJSON, successMessage: "Payload copied.")
-            }
-            .buttonStyle(.bordered)
-
-            Button("Copy Response Body") {
-                copy(snapshot.responseBody ?? "", successMessage: "Response body copied.")
-            }
-            .buttonStyle(.bordered)
-            .disabled(responseBodyText == "—")
-
-            Button("Copy Token") {
-                copy(snapshot.deviceToken, successMessage: "Device token copied.")
-            }
-            .buttonStyle(.bordered)
-            .disabled(snapshot.deviceToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-            Button("Copy cURL") {
-                copy(snapshot.curlCommand, successMessage: "cURL command copied.")
-            }
-            .buttonStyle(.bordered)
-
-            Spacer()
         }
     }
 
@@ -237,6 +240,23 @@ struct HistoryDetailWindowView: View {
         normalized(snapshot.responseBody)
     }
 
+    @ViewBuilder
+    private var feedbackMessageBar: some View {
+        if let feedbackMessage,
+           !feedbackMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(spacing: 0) {
+                Divider()
+                Text(feedbackMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial)
+            }
+        }
+    }
+
     private func copy(_ text: String, successMessage: String) {
         PasteboardHelper.copy(text)
         feedbackMessage = successMessage
@@ -256,7 +276,7 @@ struct HistoryDetailWindowView: View {
         }
 
         state.loadFromHistorySnapshot(snapshot)
-        feedbackMessage = "Loaded request into Send."
+        dismiss()
     }
 
     private func normalized(_ text: String?) -> String {
